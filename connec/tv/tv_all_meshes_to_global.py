@@ -11,7 +11,7 @@ from sklearn.linear_model import ElasticNet
 from sklearn.model_selection import GridSearchCV
 
 
-path_data = "/cobrain/groups/ml_group/data/HCP/cleaned_data/"
+path_data = "/nmnt/x01-hdd/HCP/data"
 
 with open(path_data + "mean_mesh_labels", 'rb') as f:
     mean_labels = pickle.load(f)
