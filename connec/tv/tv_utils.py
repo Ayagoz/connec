@@ -5,6 +5,32 @@ from collections import Counter
 import networkx as nx
 from itertools import combinations
 from scipy.spatial.distance import squareform
+def get_data_ij(i, j, labels, all_triangles, coordinates, data):
+    idx_node_i = np.where(labels == i)[0]
+    idx_node_j = np.where(labels == j)[0]
+    all_idx_ij = set((idx_node_i).tolist() + (idx_node_j).tolist())
+
+    triangles_ij = []
+    for mesh in all_triangles:
+        if len(all_idx_ij.intersection(set(mesh))) == 3:
+            triangles_ij += [mesh]
+    triangles_ij = np.array(triangles_ij)
+
+    unique_triangles_nodes_ij = sorted(np.unique(triangles_ij.reshape(-1)))
+    #print(len(all_idx_ij), len(unique_triangles_nodes_ij))
+    if len(unique_triangles_nodes_ij) < len(all_idx_ij):
+        all_idx_ij = sorted(list(all_idx_ij.intersection(set(unique_triangles_nodes_ij))))
+    else:
+        all_idx_ij = list(all_idx_ij)
+    numeration = dict(zip(unique_triangles_nodes_ij, np.arange(len(unique_triangles_nodes_ij))))
+    #print(all_idx_ij[:10])
+    n = triangles_ij.shape[0]
+
+    re_triangles_ij = np.array(list(map(lambda x: numeration[x], triangles_ij.reshape(-1)))).reshape(n,3)
+
+    coord_ij = coordinates[all_idx_ij,:]
+    
+    return coord_ij, re_triangles_ij, data[:, all_idx_ij]
 class CustomTVReg:
     def __init__(self, mean_labels = None, path = None, data = None, node1 = None, node2 = None,
                 mode_reg = 'l2', mode_tria = 'node'):
