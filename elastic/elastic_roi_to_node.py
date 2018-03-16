@@ -6,23 +6,44 @@ import os
 
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
-
+from data_load import load_data
 from utils import get_nodes_attribute, get_all_attr, rich_cl, to_degree, local_measure
+
 from sklearn.linear_model import ElasticNet
 from sklearn.model_selection import GridSearchCV, ShuffleSplit
-from sklearn.metrics import r2_score, make_scorer
 
+
+path = '/cobrain/groups/ml_group/data/HCP/HCP/'
+connec , thinkness, log_jac, unique_labels, labels, mean_area_eq, idx_subj_connec, idx_subj_think, idx_subj_logjac = load_data(path)
+
+
+thinkness = thinkness.reshape(789, -1)
+log_jac = log_jac.reshape(789, -1)
+mean_area_eq = mean_area_eq.reshape(-1)
+labels = labels.reshape(-1)
+
+idx = np.array(list(range(1,4)) + list(range(5,39)) + list(range(40, 71)))
+roi_think = []
+for i in range(68):
+    loc_idx = np.where(labels == idx[i])[0]
+    roi_think += [np.mean(thinkness[:,loc_idx], axis = -1)]
+roi_think = np.array(roi_think).T
+
+roi_area = []
+for i in range(68):
+    loc_idx = np.where(labels == idx[i])[0]
+    roi_area += [np.sum(mean_area_eq[loc_idx]*np.exp(log_jac[:, loc_idx]), axis = -1)]
+roi_area = np.array(roi_area).T
+
+
+roi_vol = []
+for i in range(68):
+    loc_idx = np.where(labels == idx[i])[0]
+    roi_vol += [np.sum(mean_area_eq[loc_idx]*np.exp(log_jac[:, loc_idx]) * thinkness[:,loc_idx], axis = -1)]
+    
+roi_vol = np.array(roi_vol).T
 
 path_data = "/cobrain/groups/ml_group/data/HCP/cleaned_data/"
-
-with open(path_data + "normed_connectomes", 'rb') as f:
-    Y = pickle.load(f)
-
-with open(path_data + "subjects_roi_thinkness", 'rb') as f:
-    roi_think = pickle.load(f)
-
-with open(path_data + "subjects_roi_volume", 'rb') as f:
-    roi_volume = pickle.load(f)
     
 targets_name = ['clustering', 'rich_club', 'betweenness', 'closeness',  'degree_centrality', 'eigenvector']
 
@@ -34,13 +55,13 @@ for name in targets_name:
 print(np.array(targets_data).shape)
 
 
-cv = ShuffleSplit(test_size=0.2)
+cv = ShuffleSplit(n_splits=3, test_size=0.2)
 
 
 
-elastic_param = {'alpha': [ 1e-5, 1e-3, 0.1, 1.0, 5, 10, 20, 50,], 
-                 'l1_ratio': [1e-9, 1e-5, 1e-3, 0.1, 0.25, 0.4, 0.7, 1],
-                 'max_iter':[1000, 10000]}
+elastic_param = {'alpha': [ 1e-5, 1e-3, 0.1, 1.0, 5, 10, ], 
+                 'l1_ratio': [1e-5, 1e-3, 0.1, 0.4, 1, 5.],
+                 'max_iter':[10000]}
 
 
 
@@ -51,16 +72,16 @@ path_res = '/home/ayagoz/connec/results/'
 if not os.path.exists(path_res + 'roi_node'):
     os.mkdir(path_res + 'roi_node')
 path_res += 'roi_node/'
-
+Y = connec[:,0,:,:]
 wdeg = Y.sum(axis = -1)                 
-X = np.concatenate([roi_think, roi_volume], axis= -1)
+X = np.concatenate([roi_think, roi_area, roi_vol], axis= -1)
 print('Fit ElasticNet for weighted degree')
 elastic = ElasticNet()
 StanS = StandardScaler()
 MinM = MinMaxScaler()
 cv = ShuffleSplit(test_size=0.2)
 rg =GridSearchCV(elastic, elastic_param, scoring = 'r2', 
-                        n_jobs=-1, cv = 10)
+                        n_jobs=-1, cv = cv)
 
 rg.fit(X, wdeg)
 orig = pd.DataFrame.from_dict(rg.cv_results_)
@@ -93,7 +114,7 @@ for j, target in enumerate(targets_data):
     MinM = MinMaxScaler()
     cv = ShuffleSplit(test_size=0.2)
     rg =GridSearchCV(elastic, elastic_param, scoring = 'r2', 
-                            n_jobs=-1, cv = 10)
+                            n_jobs=-1, cv = cv)
     
     rg.fit(X, target)
     orig = pd.DataFrame.from_dict(rg.cv_results_)

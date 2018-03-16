@@ -91,7 +91,7 @@ def load_data(path = '/home/bgutman/datasets/HCP/'):
             tmp = []
             with open(path_log_jac + foldername + '/' + 'LH_LogJac_2e-4_eq.raw', 'rb') as f:
                     tmp += [np.fromfile(f, count=-1 ,dtype='float32')]
-            with open(path_log_jac + foldername + '/' + 'LH_LogJac_2e-4_eq.raw', 'rb') as f:
+            with open(path_log_jac + foldername + '/' + 'RH_LogJac_2e-4_eq.raw', 'rb') as f:
                     tmp += [np.fromfile(f, count=-1 ,dtype='float32')]
             log_jac += [tmp]
     
@@ -145,7 +145,7 @@ def load_data(path = '/home/bgutman/datasets/HCP/'):
     
     return np.array(connectomes), np.array(thinkness), np.array(log_jac), np.array(unique_labels), labels, mean_area_eq, np.array(idx_subj_connec)
 
-def load_meshes_coor_tria(path):
+def load_meshes_coor_tria(path, name):
     '''
     read and load meshes coordinates and triangles 
     return : coord, triangles
@@ -155,7 +155,7 @@ def load_meshes_coor_tria(path):
     '''
     LH_coord = []
     LH_tria = []
-    with open(path + 'LH_200_mean.m', 'r') as f:
+    with open(path + 'LH' + name, 'r') as f:
         f.readline()
         for line in f:
             a = line.strip('\n').split(' ')
@@ -165,14 +165,14 @@ def load_meshes_coor_tria(path):
                 LH_tria += [np.array([int(x)-1 for x in a[2:]])]
     RH_coord = []
     RH_tria = []
-    with open(path +'RH_200_mean.m', 'r') as f:
+    with open(path +'RH' + name, 'r') as f:
         f.readline()
         for line in f:
             a = line.strip('\n').split(' ')
             if a[0] == 'Vertex':
                 RH_coord += [np.array([float(x)-1 for x in a[2:-1]])]
             if a[0] == 'Face':
-                RH_tria += [np.array([int(x)+163842 - 1 for x in a[2:]])]
+                RH_tria += [np.array([int(x)+len(LH_coord) - 1 for x in a[2:]])]
     coord = np.array(LH_coord + RH_coord)
     tria = np.array(LH_tria + RH_tria)
     
