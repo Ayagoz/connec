@@ -1,216 +1,248 @@
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import squareform
-from collections import Counter
-import networkx as nx
+import os
+
+def label_format(labels):
+    uniq = np.unique(labels)
+    tokens = dict(zip(*[np.arange(uniq.shape[0]), uniq]))
+    for k, i in tokens.items():
+        idx = np.where(labels == i)[0]
+        labels[idx] = k
+    return labels
 
 
-
-def to_degree(data, mode = 'binary'):
+def load_data(path = '/home/bgutman/datasets/HCP/', nodes_idx =np.array(list(range(3)) + list(range(4,38)) + list(range(39, 70))), bad_subj_include = ['168139','361941', '257845', '671855'] ):
     '''
-    data: [number of subject, square matrix] or square matrix
-    convert data type of [number of subject, square matrix] -> [number of subject, degree]
+    load data: connectomes, smooth_2e-4 thickness, smooth_2e-4 logjac, MajVote Labels, mean area equalized 
+    specify if indeed
+    
+    path -- localization of data
+    connectome path = path + 'Connectomes/' 
+    thickness path = path + 'FreeSurfer/thickness/'
+    logjac path = path + 'FreeSurfer/LogJacobian/'
     
     
+    mean_area and labels should locate in directory path
+    
+    
+    nodes_idx -- each connectome can be contane more than 68 vertex, so be sure you know which one to use.
     '''
     
-    if mode == 'weighted':
-        degree = data.sum(axis = -1)
-    if mode == 'binary':
-        bdata = data.copy()
-        bdata[data > 0] = 1
-        degree = bdata.sum(axis = -1)
-    return degree
-def rich_cl(Y):
-    rich_club = []
-    for one in Y:
-        G = nx.from_numpy_array(one)
-        rcv = nx.rich_club_coefficient(G, normalized=False)
-        a = set(rcv.keys())
-        b = set(range(68))
-        add_keys = b.difference(a)
-        for idx in add_keys:
-            rcv[idx] = 0 
-        rich_club += [np.array(list(rcv.values()))]
-    return np.array(rich_club)
-def av_clus(Y):
-    av_clus = []
-    for one in Y:
-        G = nx.from_numpy_array(one)
-        av_clus += [nx.average_clustering(G, weight='weight')]
-    return np.array(av_clus)
-def mod_score(Y):
-    mod_score = []
-    for one in Y:
-        G = nx.from_numpy_array(one)
-        part = community.best_partition(G)
-        mod_score += [community.modularity(part, G, weight='weight')]
-    return np.array(mod_score)
-def local_measure(Y, name):
-    measure = []
-    for one in Y:
-        G = nx.from_numpy_array(one)
-        if name == 'degree_centrality':
-            measure+= [np.array(list(getattr(nx, name)(G).values()))]
-        
-        elif name == 'closeness_centrality':
-            measure+= [np.array(list(getattr(nx, name)(G, distance = 'weight').values()))]
+    data = pd.DataFrame(columns=['subject_id', 'connectome', 'thickness', 'logjac'])
+    path_connectomes = path + 'Connectomes/' 
+    idx = nodes_idx
+    bad_subj = []
+    for foldername in sorted(os.listdir(path_connectomes)):
+    #896778_NxNmatrix_FULL_618566.txt  896778_NxNmatrix_FULL_NORM.txt
+        filename = sorted(os.listdir(path_connectomes + foldername + '/con/'))[0]
+        with open(path_connectomes + foldername + '/con/' + filename, 'rb') as f:
+            matrix = np.loadtxt(f, dtype='float32')
+            np.fill_diagonal(matrix,0)
+            matrix = squareform(matrix[np.ix_(idx,idx)])
+        if len(np.where(matrix.sum(axis=0) == 0)[0]) > 0:
+            bad_subj += [foldername]
+        subject = pd.DataFrame(data = [[foldername, matrix, None, None]], columns=data.columns)
+        data = data.append(subject)
+    data.index = data.subject_id
+    data = data.drop(bad_subj)
+    
+    with open(path + 'LH_labels_MajVote.raw', 'rb') as f:
+        LH_labels = np.fromfile(f, count=-1 ,dtype='float32')
+
+    with open(path + 'RH_labels_MajVote.raw', 'rb') as f:
+        RH_labels = np.fromfile(f, count=-1 ,dtype='float32')
+
+    labels = np.concatenate([LH_labels, RH_labels], axis = 0).astype(int)
+    loc_idx = np.where(labels != 0)[0]
+    
+    path_thickness = path + 'FreeSurfer/thickness/'
+    
+    for foldername in data.index:
+        if not os.path.exists(path_thickness + foldername + '/'):
+            data.drop(foldername)
         else:
-            measure+= [np.array(list(getattr(nx, name)(G, weight = 'weight').values()))]
-        
-    return np.array(measure)
-def counter_mean_area_thinkness_and_size_of_roi(thinkness, unique_labels):
-    '''
-    by labels merge and sum -> 68
-    
-    '''
-    un_mean_think = []
-    un_num_roi = []
-    for l, one in enumerate(thinkness):
-        un_label = np.array(list(unique_labels[l][0]) + list(unique_labels[l][1]))
-        
-        counter = Counter()
-        counter.update(un_label)
-        t = np.array([v for k, v in sorted(counter.items()) if k!= 0])
-        
-        un_num_roi += [t]
+            with open(path_thickness + foldername + '/' + 'LH_thick_smooth_2e-4.raw', 'rb') as f:
+                    LH = np.fromfile(f, count=-1 ,dtype='float32')
+                    LH = np.where(LH < 0, 0, LH)
 
-        one_think = np.array(list(one[0]) + list(one[1]))
-        one_think = np.where(one_think < 0, 0, one_think)
-        df = pd.DataFrame(data = np.concatenate((one_think[:, np.newaxis], un_label[:, np.newaxis]), axis=1))
-        mean_area = df.groupby(by=df[1], axis =0,).mean()[1:]
-
-        un_mean_think += [np.array(mean_area).reshape(-1)]
-    return np.array(un_mean_think), np.array(un_num_roi)
-def count_mean_roi_volume(thinkness, un_log_jac, mean_area, unique_labels):
-    '''
-    count volumes -> 68
-    
-    '''
-    
-    
-    mean_roi_volume = []
-    prod = np.multiply(thinkness, np.multiply(np.exp(un_log_jac), mean_area.reshape(1,2,-1)))
-    
-    for l, one in enumerate(prod):
-        un_label = np.array(list(unique_labels[l][0]) + list(unique_labels[l][1]))
-        
-        one_think = np.array(list(one[0]) + list(one[1]))
-        one_think = np.where(np.array(list(thinkness[l][0]) + list(thinkness[l][0])) < 0, 0, one_think)
-        
-        df = pd.DataFrame(data = np.concatenate((one_think[:, np.newaxis], un_label[:, np.newaxis]), axis=1))
-        mean_vol = df.groupby(by=df[1], axis =0,).mean()[1:]
-
-        mean_roi_volume += [np.array(mean_vol).reshape(-1)]
-    
-    return np.array(mean_roi_volume)
-
-def outliers_normal(volumes):
-    idx_b = np.where(volumes > volumes.mean() + 3*volumes.std())[0]
-    idx_l = np.where(volumes < volumes.mean() - 3*volumes.std())[0]
-    return np.array(list(idx_l) + list(idx_b))
-
-
-def clear_connec(connectomes):
-    '''
-    replace by zero edges with freq < 10% along the sample
-    
-    '''
-    bin_connectomes = connectomes.copy()
-    bin_connectomes[bin_connectomes > 0] = 1
-    freq_mat = bin_connectomes.mean(axis = 0)
-    
-    freq_edges = squareform(freq_mat)
-    perc_edges = np.percentile(freq_edges, 10)
-    
-    new_connectomes = []
-    for one in connectomes:
-        t = one.copy()
-        t[freq_mat < perc_edges] = 0.
-        new_connectomes += [t]
-    
-    return np.array(new_connectomes)
-def get_nodes_attribute(think, log_jacs, meshes_area, mean_labels, node1, node2 = None):
-    '''
-    think, log_jac, meshes_atra -- some type of data corresponding to meshes
-    mean_labels - mapping of each mesh to node 
-    
-    node1 - integer from 1 to 70, except 4, 39 (because mean_labels from 0 == The Unknown)
-    node2 - integer from 1 to 70, except 4, 39
-    
-    '''
-    X = []
-    un_label = np.array(list(mean_labels[0]) + list(mean_labels[1]))
-    idx1 = np.where(un_label == node1)[0]
-    if node2 != None:
-        idx2 = np.where(un_label == node2)[0]
-    
-    for l, one in enumerate(think):
-#         if l%100 == 0:
-# #             print(l)
-#         one_think = np.array(list(one[0]) + list(one[1]))
-#         one_log_jac = np.array(list(log_jacs[l][0]) + list(log_jacs[l][1]))
-#         one_mesh_area = np.array(list(meshes_area[l][0]) + list(meshes_area[l][1]))
-        one_think = one
-        one_log_jac = log_jacs[l]
-        one_mesh_area = meshes_area[l]
-        
-        node_think1 = one_think[idx1]
-    
-        node_log_jac1 = one_log_jac[idx1]
-    
-        node_mesh_area1 = one_mesh_area[idx1]
-        if node2!= None:
-            node_think2 = one_think[idx2]
-
-            node_log_jac2 = one_log_jac[idx2]
-
-            node_mesh_area2 = one_mesh_area[idx2]
-
-            x = np.concatenate([node_think1, node_think2, node_log_jac1, node_log_jac2,
-                            node_mesh_area1, node_mesh_area2])
-        else:
-            x = np.concatenate([node_think1, node_log_jac1,node_mesh_area1])
-        X += [x]
-        
-    return np.array(X)
-
-def get_meshes_coord_tria(tria, mean_labels, node1, node2 = None, coord = None):
-    '''
-    tria - (number of triangles of mesh, 3) 
-    mean_labels - mapping of each mesh to node 
-    node1 - integer from 1 to 70, except 4, 39
-    node2 - integer from 1 to 70, except 4, 39
-    
-    coord - if needed
-    
-    '''
-    node_tria = []
-    
-    un_label = np.array(list(mean_labels[0]) + list(mean_labels[1]))
-    idx1 = np.where(un_label == node1)[0]
-    meshes = set(idx1)
-    if coord != None:
-        node_coord = coord[idx1, :]
-    if node2 != None:
-        idx2 = np.where(un_label == node2)[0]
-        if coord != None:
-            node_coord = np.concatenate([node_coord,coord[idx2,:]])
-        meshes.update(set(idx2))
-    
-    for l, one in enumerate(tria):
-        if len(meshes.intersection(set(one))) == 3:
-            node_tria += [one]
+            with open(path_thickness + foldername + '/' + 'RH_thick_smooth_2e-4.raw', 'rb') as f:
+                    RH = np.fromfile(f, count=-1 ,dtype='float32')
+                    RH = np.where(RH < 0, 0, RH)
+            thick = np.concatenate([LH, RH], axis = 0)
+            data.loc[foldername]['thickness'] = thick[loc_idx]
             
-    if coord != None:
-        return np.array(node_tria), node_coord
-    else:
-        return np.array(node_tria)
-def get_all_attr(think, log_jac, mesh_area, mean_labels, Y = None):
-    idx = np.where(mean_labels!=0)[0]
-    X = np.concatenate([think[:,idx], log_jac[:, idx], mesh_area[:, idx]], axis = -1)
-    if Y != None:
-        new_Y = np.array([squareform(y) for y in Y])
-        return X, new_Y
-    else:
-        return X
+
+    path_log_jac = path + 'FreeSurfer/LogJacobian/'
+    for foldername in data.index:
+        if not os.path.exists(path_log_jac + foldername + '/'):
+            data.drop(foldername)
+        else:
+            with open(path_log_jac + foldername + '/' + 'LH_LogJac_2e-4.raw', 'rb') as f:
+                    LH = np.fromfile(f, count=-1 ,dtype='float32')
+            with open(path_log_jac + foldername + '/' + 'RH_LogJac_2e-4.raw', 'rb') as f:
+                    RH += np.fromfile(f, count=-1 ,dtype='float32')
+            logjac = np.concatenate([LH, RH], axis = 0)
+            data.loc[foldername]['logjac'] = logjac[loc_idx]
+        
+  
+
+    with open(path + 'LH_mean_area_equalized.raw', 'rb') as f:
+        LH_area= np.fromfile(f, count=-1 ,dtype='float32')
+
+    with open(path + 'RH_mean_area_equalized.raw', 'rb') as f:
+        RH_area= np.fromfile(f, count=-1 ,dtype='float32')
+    mean_area = np.concatenate([LH_area, RH_area], axis = 0)
+    data = data.drop(labels = ['subject_id'], axis = 1)
+    
+    data = data.dropna()
+    
+    if bad_subj_include != None:
+        data = data.drop(labels = bad_subj_include, axis = 0)
+    loc_labels = label_format(labels[loc_idx])
+    new_mean_area = mean_area[loc_idx]
+    print('Number of subjects: {}'.format(data.shape[0]))
+    print('Data contains: \nthick shape {} \nlogjac shape {} \nlabels shape {} \
+          \nmean_area shape {} '.format(data.thickness[0].shape, data.logjac[0].shape, 
+                                        loc_labels.shape, new_mean_area.shape)) 
+    
+    return data, loc_labels, new_mean_area
+
+
+def load_meshes_coor_tria(path='/home/bgutman/datasets/HCP/', name='_200_mean.m'):
+    '''
+    read and load meshes coordinates and triangles 
+    return : coord, triangles
+    
+    #num of mesh - [L, R]
+    
+    '''
+    LH_coord = []
+    LH_tria = []
+    with open(path + 'LH' + name, 'r') as f:
+        f.readline()
+        for line in f:
+            a = line.strip('\n').split(' ')
+            if a[0] == 'Vertex':
+                LH_coord += [np.array([float(x) for x in a[2:-1]])]
+            if a[0] == 'Face':
+                LH_tria += [np.array([int(x)-1 for x in a[2:]])]
+    RH_coord = []
+    RH_tria = []
+    with open(path +'RH' + name, 'r') as f:
+        f.readline()
+        for line in f:
+            a = line.strip('\n').split(' ')
+            if a[0] == 'Vertex':
+                RH_coord += [np.array([float(x)-1 for x in a[2:-1]])]
+            if a[0] == 'Face':
+                RH_tria += [np.array([int(x)+len(LH_coord) - 1 for x in a[2:]])]
+    coord = np.array(LH_coord + RH_coord)
+    tria = np.array(LH_tria + RH_tria)
+    with open(path + 'LH_labels_MajVote.raw', 'rb') as f:
+        LH_labels = np.fromfile(f, count=-1 ,dtype='float32')
+
+    with open(path + 'RH_labels_MajVote.raw', 'rb') as f:
+        RH_labels = np.fromfile(f, count=-1 ,dtype='float32')
+
+    labels = np.concatenate([LH_labels, RH_labels], axis = 0).astype(int)
+    loc_idx = np.where(labels != 0)[0]
+
+    coord = coord[loc_idx]
+    unique_labels_meshes = np.unique(loc_idx)
+    numeration = dict(zip(unique_labels_meshes, np.arange(len(unique_labels_meshes))))
+    del_idx = set(np.where(labels == 0)[0])
+    new_tria = []
+    for one in tria:
+        if len(del_idx.intersection(set(one))) == 0:
+            new_tria +=[one]
+    new_tria = np.array(new_tria)
+
+    n = new_tria.shape[0]
+    new_tria = np.array(list(map(lambda x: numeration[x], new_tria.reshape(-1)))).reshape(n,3)
+    print('Meshes coordinates shape: ', coord.shape)
+    print('Number of triangles of meshes: ', new_tria.shape)
+    return coord, tria
+
+
+def convert(data):
+    return np.array([one for one in data])
+
+
+def one_subj_count(thick, log_jac, mean_area):
+    area = np.exp(log_jac)*mean_area
+    vol = thick * area
+    return area, vol
+
+
+def meshes_count(data,  mean_area): 
+    new_data = data.copy()
+    new_data['area'] = [None]*data.shape[0]
+    new_data['vol'] = [None]*data.shape[0]
+    for subj in new_data.index:
+        area, vol = one_subj_count(data.thickness[subj], data.logjac[subj],
+                                  mean_area)
+        new_data.area[subj] = area
+        new_data.vol[subj] = vol
+    return new_data
+
+
+def global_count(data, labels, mean_area):
+    nodes = np.arange(68)
+    idxes = np.array([np.where(labels == node)[0] for node in nodes])
+
+    new_data = meshes_count(data, mean_area)
+    new_data['roi_area'] = [None]*data.shape[0]
+    new_data['roi_vol'] = [None]*data.shape[0]
+    
+    for subj in new_data.index:
+        roi_area = np.array([np.sum(new_data.area[subj][idx]) for idx in idxes])
+        roi_vol = np.array([np.sum(new_data.vol[subj][idx]) for idx in idxes])
+        new_data.roi_area[subj] = roi_area
+        new_data.roi_vol[subj] = roi_vol
+    return new_data
+
+
+def roi_transformer(data, labels, mean_area):
+    new_data = global_count(data, labels, mean_area)
+    new_data = new_data[['roi_area', 'roi_vol']]
+    return new_data
+
+
+def meshes_transformer(data, labels, mean_area):
+    if 'area' not in data.columns and 'vol' not in data.columns:
+        data = global_count(data, labels, mean_area)
+    return data[['thickness', 'logjac', 'area', 'vol']]
+
+
+def degree_transform(Y, mode='weighted', norm=True):
+    if len(Y.shape) == 1:
+        Y = convert(Y)
+        if len(Y.shape) == 2:
+            Y = np.array([squareform(y) for y in Y])
+    if mode == 'weighted':
+        degree = Y.sum(axis = -1)
+        return degree
+    if mode == 'bin':
+        Y[Y > 0] = 1
+        degree = Y.sum(axis = -1)
+        return degree
+    
+    
+def edge_convert(Y):
+    if len(Y.shape) == 1:
+        Y = convert(Y)
+        if len(Y.shape) == 3:
+            Y = np.array([squareform(y) for y in Y])
+            return Y
+        return Y
+    if len(Y.shape) == 3:
+        Y = np.array([squareform(y) for y in Y])
+        return Y
+    return Y
+
+def node_convert(Y, mode='wdegree'):
+    if mode == 'wdegree':
+        return degree_transform(Y)
+    if mode == 'degree':
+        return degree_transform(Y, mode='bin')    

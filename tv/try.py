@@ -104,8 +104,8 @@ def main():
                                                                   tria, convert(getattr(data, type_X_data)))
                     
                     
-                    res = one_edge_tv(coord_ij, tria_ij, data_ij, Y[:, i, j], params)
-                    
+                    #res = one_edge_tv(coord_ij, tria_ij, data_ij, Y[:, i, j], params)
+                    res = 0.
                     f.write('edge ({0:.0f}, {1:.0f}) test r2 score {2:.3f}'.format(i, j, res))
                     f.write('\n')
                     if res > best:
@@ -131,8 +131,8 @@ def main():
             else:
                 y = Y
                 print('here!')
-            res = one_edge_tv(coord_ij, tria_ij, data_ij, y, params)
-            
+            #res = one_edge_tv(coord_ij, tria_ij, data_ij, y, params)
+            res = 0.
             if type_Y_data == 'edge':
                 f.write('edge ({0:.0f}, {1:.0f}) test r2 score {2:.3f}'.format(i, j, res))
                 f.write('\n')

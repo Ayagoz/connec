@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import squareform
 import os
+
 def label_format(labels):
     uniq = np.unique(labels)
     tokens = dict(zip(*[np.arange(uniq.shape[0]), uniq]))
@@ -9,6 +10,8 @@ def label_format(labels):
         idx = np.where(labels == i)[0]
         labels[idx] = k
     return labels
+
+
 def load_data(path = '/home/bgutman/datasets/HCP/', nodes_idx =np.array(list(range(3)) + list(range(4,38)) + list(range(39, 70))), bad_subj_include = ['168139','361941', '257845', '671855'] ):
     '''
     load data: connectomes, smooth_2e-4 thickness, smooth_2e-4 logjac, MajVote Labels, mean area equalized 
@@ -104,6 +107,8 @@ def load_data(path = '/home/bgutman/datasets/HCP/', nodes_idx =np.array(list(ran
                                         loc_labels.shape, new_mean_area.shape)) 
     
     return data, loc_labels, new_mean_area
+
+
 def load_meshes_coor_tria(path='/home/bgutman/datasets/HCP/', name='_200_mean.m'):
     '''
     read and load meshes coordinates and triangles 
@@ -158,6 +163,8 @@ def load_meshes_coor_tria(path='/home/bgutman/datasets/HCP/', name='_200_mean.m'
     print('Meshes coordinates shape: ', coord.shape)
     print('Number of triangles of meshes: ', new_tria.shape)
     return coord, tria
+
+
 def convert(data):
     return np.array([one for one in data])
 
@@ -166,6 +173,8 @@ def one_subj_count(thick, log_jac, mean_area):
     area = np.exp(log_jac)*mean_area
     vol = thick * area
     return area, vol
+
+
 def meshes_count(data,  mean_area): 
     new_data = data.copy()
     new_data['area'] = [None]*data.shape[0]
@@ -176,6 +185,8 @@ def meshes_count(data,  mean_area):
         new_data.area[subj] = area
         new_data.vol[subj] = vol
     return new_data
+
+
 def global_count(data, labels, mean_area):
     nodes = np.arange(68)
     idxes = np.array([np.where(labels == node)[0] for node in nodes])
@@ -190,6 +201,8 @@ def global_count(data, labels, mean_area):
         new_data.roi_area[subj] = roi_area
         new_data.roi_vol[subj] = roi_vol
     return new_data
+
+
 def get_data_ij(i, j, labels, all_triangles, coordinates, data):
     idx_node_i = np.where(labels == i)[0]
     idx_node_j = np.where(labels == j)[0]
